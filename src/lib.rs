@@ -1,3 +1,4 @@
+use cgmath::num_traits::Float;
 use wgpu::util::DeviceExt;
 use winit::{
     event::{ElementState, Event, KeyEvent, WindowEvent},
@@ -227,13 +228,13 @@ impl<'a> State<'a> {
         });
 
         let mut instances = Vec::new();
-        let instance_num: u32 = 2;
+        let instance_num: u32 = 6;
         // let scale = 0.5;
 
         for i in 0..instance_num {
             instances.push(Instance {
                 // offset: [0.0, 0.0, 0.0],
-                offset: [(i as f32 * 0.5), 0.0, 0.0],
+                offset: [(i as f32 * 0.25), 0.0, 0.0],
                 scale: 2.0,
             })
         }
@@ -293,7 +294,35 @@ impl<'a> State<'a> {
         return false;
     }
 
-    fn update(&mut self) {}
+    fn update(&mut self) {
+        let speed = 0.01;
+
+        for instance in &mut self.instances {
+            instance.offset[0] += speed;
+            if instance.offset[0] > 1.0 {
+                instance.offset[0] = -1.0;
+            }
+        }
+
+        let theta = 0.02;
+
+        let cos_theta = theta.cos();
+        let sin_theta = theta.sin();
+
+        for instance in &mut self.instances {
+            let x = instance.offset[0];
+            let y = instance.offset[1];
+
+            instance.offset[0] = cos_theta * x + sin_theta * y;
+            instance.offset[1] = -sin_theta * x + cos_theta * y;
+        }
+
+        self.queue.write_buffer(
+            &self.instance_buffer,
+            0,
+            bytemuck::cast_slice(&self.instances),
+        );
+    }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
