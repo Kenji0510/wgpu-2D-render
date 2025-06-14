@@ -113,6 +113,7 @@ struct State<'a> {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     num_indices: u32,
+    bg_color: wgpu::Color,
 }
 
 impl<'a> State<'a> {
@@ -261,6 +262,13 @@ impl<'a> State<'a> {
 
         let num_indices = INDICES.len() as u32;
 
+        let bg_color = wgpu::Color {
+            r: 0.1,
+            g: 0.2,
+            b: 0.3,
+            a: 1.0,
+        };
+
         Self {
             surface,
             device,
@@ -274,6 +282,7 @@ impl<'a> State<'a> {
             vertex_buffer,
             index_buffer,
             num_indices,
+            bg_color,
         }
     }
 
@@ -317,6 +326,16 @@ impl<'a> State<'a> {
             instance.offset[1] = -sin_theta * x + cos_theta * y;
         }
 
+        use std::f32::consts::PI;
+        let t = (self.instances[0].offset[0] + 1.0) * PI;
+
+        self.bg_color = wgpu::Color {
+            r: 0.5 + 0.5 * (t).sin() as f64,
+            g: 0.5 + 0.5 * (t * 1.3).sin() as f64,
+            b: 0.5 + 0.5 * (t * 0.7).sin() as f64,
+            a: 1.0,
+        };
+
         self.queue.write_buffer(
             &self.instance_buffer,
             0,
@@ -342,12 +361,13 @@ impl<'a> State<'a> {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
+                        // load: wgpu::LoadOp::Clear(wgpu::Color {
+                        //     r: 0.1,
+                        //     g: 0.2,
+                        //     b: 1.0,
+                        //     a: 1.0,
+                        // }),
+                        load: wgpu::LoadOp::Clear(self.bg_color),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
