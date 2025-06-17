@@ -50,9 +50,13 @@ fn palette(t: f32) -> vec3<f32> {
 @fragment
 fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
     var t = (frag_coord.xy * 2.0 - u.resolution.xy) / u.resolution.y;
+    var t1 = t;
+    var final_color = vec3<f32>(0.0);
+
+    t = fract(t * 2.0) - 0.5;
 
     var d = length(t.xy);
-    var col = palette(d + u_time.time);
+    var col = palette(length(t1) + u_time.time);
 
     d = sin(d * 8.0 + u_time.time) / 8.0;
     d = abs(d);
@@ -60,8 +64,8 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
     // d = smoothstep(0.0, 0.1, d);
     d = 0.02 / d;
 
-    col *= d;
+    final_color = col * d;
 
     // return vec4(t.x, t.y, 0.0, 1.0);
-    return vec4(col, 1.0);
+    return vec4(final_color, 1.0);
 }
