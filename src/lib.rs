@@ -21,6 +21,12 @@ struct Instance {
     scale: f32,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Uniforms {
+    resolution: [f32; 2],
+}
+
 impl Vertex {
     fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
@@ -42,63 +48,26 @@ impl Vertex {
     }
 }
 
-impl Instance {
-    fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
-        wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Instance>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &[
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    shader_location: 2,
-                    format: wgpu::VertexFormat::Float32x3,
-                },
-                wgpu::VertexAttribute {
-                    offset: 12,
-                    shader_location: 3,
-                    format: wgpu::VertexFormat::Float32,
-                },
-            ],
-        }
-    }
-}
-
 const VERTICES: &[Vertex] = &[
     Vertex {
-        position: [-0.25, -0.25, 0.25],
-        color: [1.0, 0.0, 0.0],
+        position: [-1.0, 1.0, 0.0],
+        color: [0.0, 0.0, 0.0],
     },
     Vertex {
-        position: [-0.25, -0.27, 0.25],
-        color: [0.0, 1.0, 0.0],
+        position: [-1.0, -1.0, 0.0],
+        color: [0.0, 0.0, 0.0],
     },
     Vertex {
-        position: [0.25, -0.25, 0.25], // 2
-        color: [0.0, 0.0, 1.0],
+        position: [1.0, -1.0, 0.0],
+        color: [0.0, 0.0, 0.0],
     },
     Vertex {
-        position: [0.25, -0.27, 0.25],
-        color: [0.0, 1.0, 1.0],
-    },
-    Vertex {
-        position: [0.25, 0.0, 0.25],
-        color: [1.0, 1.0, 1.0],
-    },
-    Vertex {
-        position: [0.25, -0.02, 0.25], // 5
-        color: [0.0, 1.0, 0.0],
-    },
-    Vertex {
-        position: [0.23, 0.0, 0.25],
-        color: [1.0, 0.0, 1.0],
-    },
-    Vertex {
-        position: [0.23, -0.27, 0.25],
-        color: [1.0, 1.0, 0.0],
+        position: [1.0, 1.0, 0.0],
+        color: [0.0, 0.0, 0.0],
     },
 ];
 
-const INDICES: &[u16] = &[0, 1, 2, 1, 3, 2, 4, 0, 1, 1, 5, 4, 4, 6, 7, 7, 3, 4];
+const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
 
 struct State<'a> {
     surface: wgpu::Surface<'a>,
@@ -108,11 +77,10 @@ struct State<'a> {
     size: winit::dpi::PhysicalSize<u32>,
     window: &'a Window,
     render_pipeline: wgpu::RenderPipeline,
-    instances: Vec<Instance>,
-    instance_buffer: wgpu::Buffer,
+    screen_size_buffer: wgpu::Buffer,
+    screen_size_bind_group: wgpu::BindGroup,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
-    num_indices: u32,
     bg_color: wgpu::Color,
 }
 
@@ -182,10 +150,43 @@ impl<'a> State<'a> {
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
+        let screen_size_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Screen size bind group layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let screen_size = Uniforms {
+            resolution: [config.width as f32, config.height as f32],
+        };
+        let screen_size_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Screen size buffer"),
+            contents: bytemuck::bytes_of(&screen_size),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let screen_size_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Screen size bind group"),
+            layout: &screen_size_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: screen_size_buffer.as_entire_binding(),
+            }],
+        });
+
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline"),
-                bind_group_layouts: &[],
+                bind_group_layouts: &[&screen_size_bind_group_layout],
                 push_constant_ranges: &[],
             });
 
@@ -195,7 +196,8 @@ impl<'a> State<'a> {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[Vertex::desc(), Instance::desc()],
+                // buffers: &[Vertex::desc()],
+                buffers: &[],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -208,45 +210,12 @@ impl<'a> State<'a> {
                 })],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                ..Default::default()
-            },
-            // depth_stencil: Some(wgpu::DepthStencilState {
-            //     format: wgpu::TextureFormat::Depth32Float,
-            //     depth_write_enabled: true,
-            //     depth_compare: wgpu::CompareFunction::Less,
-            //     stencil: wgpu::StencilState::default(),
-            //     bias: wgpu::DepthBiasState::default(),
-            // }),
+            primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
             cache: None,
         });
-
-        let mut instances = Vec::new();
-        let instance_num: u32 = 6;
-        // let scale = 0.5;
-
-        for i in 0..instance_num {
-            instances.push(Instance {
-                // offset: [0.0, 0.0, 0.0],
-                offset: [(i as f32 * 0.25), 0.0, 0.0],
-                scale: 2.0,
-            })
-        }
-
-        let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Instance Buffer"),
-            size: (instances.len() * std::mem::size_of::<Instance>()) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        queue.write_buffer(&instance_buffer, 0, bytemuck::cast_slice(&instances));
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
@@ -256,11 +225,10 @@ impl<'a> State<'a> {
 
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Index Buffer"),
+            // contents: bytemuck::cast_slice(INDICES),
             contents: bytemuck::cast_slice(INDICES),
             usage: wgpu::BufferUsages::INDEX,
         });
-
-        let num_indices = INDICES.len() as u32;
 
         let bg_color = wgpu::Color {
             r: 0.1,
@@ -277,11 +245,10 @@ impl<'a> State<'a> {
             size,
             window,
             render_pipeline,
-            instances,
-            instance_buffer,
+            screen_size_buffer,
+            screen_size_bind_group,
             vertex_buffer,
             index_buffer,
-            num_indices,
             bg_color,
         }
     }
@@ -297,51 +264,22 @@ impl<'a> State<'a> {
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
         }
+
+        let screen_size = Uniforms {
+            resolution: [new_size.width as f32, new_size.height as f32],
+        };
+        self.queue.write_buffer(
+            &self.screen_size_buffer,
+            0,
+            bytemuck::bytes_of(&screen_size),
+        );
     }
 
     fn input(&mut self, event: &WindowEvent) -> bool {
         return false;
     }
 
-    fn update(&mut self) {
-        let speed = 0.01;
-
-        for instance in &mut self.instances {
-            instance.offset[0] += speed;
-            if instance.offset[0] > 1.0 {
-                instance.offset[0] = -1.0;
-            }
-        }
-
-        let theta = 0.02;
-
-        let cos_theta = theta.cos();
-        let sin_theta = theta.sin();
-
-        for instance in &mut self.instances {
-            let x = instance.offset[0];
-            let y = instance.offset[1];
-
-            instance.offset[0] = cos_theta * x + sin_theta * y;
-            instance.offset[1] = -sin_theta * x + cos_theta * y;
-        }
-
-        use std::f32::consts::PI;
-        let t = (self.instances[0].offset[0] + 1.0) * PI;
-
-        self.bg_color = wgpu::Color {
-            r: 0.5 + 0.5 * (t).sin() as f64,
-            g: 0.5 + 0.5 * (t * 1.3).sin() as f64,
-            b: 0.5 + 0.5 * (t * 0.7).sin() as f64,
-            a: 1.0,
-        };
-
-        self.queue.write_buffer(
-            &self.instance_buffer,
-            0,
-            bytemuck::cast_slice(&self.instances),
-        );
-    }
+    fn update(&mut self) {}
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
@@ -377,11 +315,10 @@ impl<'a> State<'a> {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            // render_pass.set_bind_group(0, &self.uni, offsets);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as _);
+            render_pass.set_bind_group(0, &self.screen_size_bind_group, &[]);
+            render_pass.draw(0..6, 0..1);
+            // render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            // render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
