@@ -42,12 +42,17 @@ fn vs_main(@builtin(vertex_index) idx: u32) -> VSOut {
 fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
     var t = (frag_coord.xy * 2.0 - u.resolution.xy) / u.resolution.y;
 
+    var col = vec3(1.0, 2.0, 3.0);
+
     var d = length(t.xy);
     d = sin(d * 8.0 + u_time.time) / 8.0;
     d = abs(d);
 
-    d = smoothstep(0.0, 0.1, d);
+    // d = smoothstep(0.0, 0.1, d);
+    d = 0.02 / d;
+
+    col *= d;
 
     // return vec4(t.x, t.y, 0.0, 1.0);
-    return vec4(d, d, d, 1.0);
+    return vec4(col, 1.0);
 }
