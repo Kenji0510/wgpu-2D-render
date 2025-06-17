@@ -38,13 +38,22 @@ fn vs_main(@builtin(vertex_index) idx: u32) -> VSOut {
 //     @builtin(position) frag_coord: vec4<f32>,
 // };
 
+fn palette(t: f32) -> vec3<f32> {
+    let a =vec3<f32>(0.5, 0.5, 0.5);
+    let b =vec3<f32>(0.5, 0.5, 0.5);
+    let c =vec3<f32>(0.5, 0.5, 0.5);
+    let d =vec3<f32>(0.263, 0.416, 0.557);
+
+    return a + b * cos(6.28318 * (c * t + d));
+}
+
 @fragment
 fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
     var t = (frag_coord.xy * 2.0 - u.resolution.xy) / u.resolution.y;
 
-    var col = vec3(1.0, 2.0, 3.0);
-
     var d = length(t.xy);
+    var col = palette(d + u_time.time);
+
     d = sin(d * 8.0 + u_time.time) / 8.0;
     d = abs(d);
 
