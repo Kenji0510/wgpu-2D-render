@@ -38,5 +38,5 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
     var d = length(t.xy);
 
     // return vec4(t.x, t.y, 0.0, 1.0);
-    return vec4(d, 0.0, 0.0, 1.0);
+    return vec4(d, d, d, 1.0);
 }
