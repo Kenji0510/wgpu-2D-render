@@ -4,6 +4,12 @@ struct Uniforms {
 @group(0) @binding(0)
 var<uniform> u: Uniforms;
 
+struct TimeUniform {
+    time: f32,
+};
+@group(0) @binding(1)
+var<uniform> u_time: TimeUniform;
+
 // 頂点→フラグメント受け渡し用
 struct VSOut {
     @builtin(position) position: vec4<f32>,
@@ -37,7 +43,7 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
     var t = (frag_coord.xy * 2.0 - u.resolution.xy) / u.resolution.y;
 
     var d = length(t.xy);
-    d = sin(d * 8.0) / 8.0;
+    d = sin(d * 8.0 + u_time.time) / 8.0;
     d = abs(d);
 
     d = smoothstep(0.0, 0.1, d);

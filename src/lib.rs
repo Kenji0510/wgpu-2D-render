@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use cgmath::num_traits::Float;
 use wgpu::util::DeviceExt;
 use winit::{
@@ -25,6 +27,12 @@ struct Instance {
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Uniforms {
     resolution: [f32; 2],
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct TimeUniform {
+    time: f32,
 }
 
 impl Vertex {
@@ -78,10 +86,12 @@ struct State<'a> {
     window: &'a Window,
     render_pipeline: wgpu::RenderPipeline,
     screen_size_buffer: wgpu::Buffer,
+    time_buffer: wgpu::Buffer,
     screen_size_bind_group: wgpu::BindGroup,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     bg_color: wgpu::Color,
+    start_time: Instant,
 }
 
 impl<'a> State<'a> {
@@ -153,16 +163,28 @@ impl<'a> State<'a> {
         let screen_size_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Screen size bind group layout"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
                     },
-                    count: None,
-                }],
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
             });
 
         let screen_size = Uniforms {
@@ -174,13 +196,26 @@ impl<'a> State<'a> {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        let time_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Time Buffer"),
+            size: std::mem::size_of::<TimeUniform>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         let screen_size_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Screen size bind group"),
             layout: &screen_size_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: screen_size_buffer.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: screen_size_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: time_buffer.as_entire_binding(),
+                },
+            ],
         });
 
         let render_pipeline_layout =
@@ -237,6 +272,8 @@ impl<'a> State<'a> {
             a: 1.0,
         };
 
+        let start_time = std::time::Instant::now();
+
         Self {
             surface,
             device,
@@ -246,10 +283,12 @@ impl<'a> State<'a> {
             window,
             render_pipeline,
             screen_size_buffer,
+            time_buffer,
             screen_size_bind_group,
             vertex_buffer,
             index_buffer,
             bg_color,
+            start_time,
         }
     }
 
@@ -279,7 +318,13 @@ impl<'a> State<'a> {
         return false;
     }
 
-    fn update(&mut self) {}
+    fn update(&mut self) {
+        let elapsed = self.start_time.elapsed().as_secs_f32();
+        let time_uniform = TimeUniform { time: elapsed };
+
+        self.queue
+            .write_buffer(&self.time_buffer, 0, bytemuck::bytes_of(&time_uniform));
+    }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
